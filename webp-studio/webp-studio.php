@@ -3,7 +3,7 @@
  * Plugin Name:       WebP Studio
  * Plugin URI:        https://example.com/webp-studio
  * Description:       Convierte automáticamente JPEG, PNG y GIF a WebP y elimina el original, haciendo que WordPress sirva únicamente WebP. La conversión de imágenes existentes se ejecuta en segundo plano mediante WP-Cron.
- * Version:           2.1.2
+ * Version:           2.1.3
  * Requires at least: 5.0
  * Requires PHP:      7.0
  * Author:            Assistant
@@ -1687,14 +1687,30 @@ class WP_Image_WebP_Converter {
             wp_send_json_error( __( 'La vista previa no se pudo generar.', 'webp-studio' ), 500 );
         }
 
-        // The editor may have renamed the file (for example to "-scaled").
         if ( $path !== $target && file_exists( $target ) ) {
+
             @unlink( $target ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
         }
 
-        set_transient( $key, array( 'path' => $path ), DAY_IN_SECONDS );
 
+        set_transient( $key, array( $path, $path ), DAY_IN_SECONDS );
         wp_send_json_success( $this->preview_payload( $path, $file, $quality ) );
+
+
+}
+    public function ajax_toggle_activity_log() {
+        $this->require_nonce();
+
+        $options = $this->get_options();
+        $options["activity_log"] = empty( $options["activity_log"] ) ? 1 : 0;
+
+        update_option( self::OPTION_NAME, $options );
+        wp_send_json_success(
+            array(
+                "message" => __( "Registro de actividad " . ( $options["activity_log"] ? "activado" : "desactivado" ), "webp-studio" ),
+                "activity_log" => $options["activity_log"],
+            )
+        );
     }
 
     /**
