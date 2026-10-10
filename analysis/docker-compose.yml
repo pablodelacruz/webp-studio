@@ -1,0 +1,39 @@
+# Read-only analysis container for the STAGING database.
+#
+# Isolation is deliberate and narrow:
+#   - It runs a MySQL client and nothing else. No PHP, no WordPress, no web server.
+#   - It attaches to no project network. It can only reach the staging host.
+#   - It mounts no volume from the development stack, so it cannot touch wp-content,
+#     the dev uploads, or the dev database.
+#
+# Everything it needs comes from analysis/.env, which is gitignored and never committed.
+#
+# Usage:
+#   ./analysis/q.sh                      opens an interactive read-only session
+#   ./analysis/q.sh -e "SELECT 1;"       runs one query and exits
+#   ./analysis/q.sh -f scan.sql          runs a file of queries
+
+services:
+  sql:
+    image: mysql:8.4
+    container_name: wpimgplugin-analysis-sql
+    # --skip-column-names keeps output machine-readable for the report scripts.
+    entrypoint: ["mysql", "--default-character-set=utf8mb4", "--batch", "--raw"]
+    env_file:
+      - .env
+    environment:
+      # Belt and braces: even if a statement were issued, the session refuses writes.
+      MYSQL_INITDB_SKIP_TZINFO: "1"
+    stdin_open: true
+    tty: false
+    restart: "no"
+    # No volumes, no ports, no networks to the rest of the project.
+    network_mode: bridge
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run/mysqld
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

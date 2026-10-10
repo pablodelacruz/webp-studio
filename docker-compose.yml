@@ -1,0 +1,55 @@
+services:
+  wordpress:
+    build: .
+    ports:
+      - "8080:80"
+    environment:
+      WORDPRESS_DB_HOST: ${DB_HOST}:3306
+      WORDPRESS_DB_NAME: ${DB_NAME}
+      WORDPRESS_DB_USER: ${DB_USER}
+      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}
+      WP_HOME: ${WP_HOME}
+      WP_SITEURL: ${WP_SITEURL}
+      WP_DEBUG: ${WP_DEBUG}
+      WP_DEBUG_LOG: ${WP_DEBUG_LOG}
+      WP_DEBUG_DISPLAY: ${WP_DEBUG_DISPLAY}
+      WP_REDIS_HOST: ${WP_REDIS_HOST:-redis}
+      WP_REDIS_PORT: ${WP_REDIS_PORT:-6379}
+      WP_CACHE_KEY_SALT: ${WP_CACHE_KEY_SALT:-${DB_NAME}}
+    volumes:
+      - wordpress_data:/var/www/html
+      - ./webp-studio:/var/www/html/wp-content/plugins/webp-studio:ro
+      - ./blank.php:/var/www/html/wp-content/plugins/wp-image-webp-converter.php:ro
+      - ./wp-config.php:/var/www/html/wp-config.php
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run", "--token", "${CLOUDFLARE_TUNNEL_TOKEN}"]
+
+volumes:
+  wordpress_data:
+  db_data:
+  redis_data:
