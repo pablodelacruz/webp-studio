@@ -3211,20 +3211,52 @@ class WP_Image_WebP_Converter_Queue {
      * @return int Files actually removed.
      */
     private function remove_files( array $files ) {
-        $base = trailingslashit( $this->basedir() );
+        // realpath() on the base, not a string: the base itself may be reached
+        // through a symlink, and comparing a resolved file against an unresolved
+        // base would reject every legitimate path.
+        $base = realpath( $this->basedir() );
+
+        if ( false === $base ) {
+            return 0;
+        }
+
+        $base = trailingslashit( wp_normalize_path( $base ) );
         $gone = 0;
 
         foreach ( $files as $relative ) {
-            $path = $base . ltrim( (string) $relative, '/' );
+            $relative = ltrim( wp_normalize_path( (string) $relative ), '/' );
+
+            if ( '' === $relative ) {
+                continue;
+            }
+
+            // The names arrive from post meta, which is stored data that any plugin
+            // able to write metadata can shape. Without containment a value such as
+            // "../../wp-config.php" turns the purge into an arbitrary file delete.
+            // realpath() resolves both ".." and symlinks, so what is compared is
+            // where the file actually is, not where it was asked to be.
+            $resolved = realpath( $base . $relative );
+
+            if ( false === $resolved ) {
+                continue; // Does not exist.
+            }
+
+            $resolved = wp_normalize_path( $resolved );
+
+            // The trailing slash on $base matters: it stops a sibling directory
+            // such as "uploads-privado" from passing as a child of "uploads".
+            if ( 0 !== strpos( $resolved, $base ) ) {
+                continue;
+            }
 
             // One more check at the last possible moment. The decision was taken
             // from the reference index a moment ago; this makes the destructive
             // step itself depend on the file still being the one we decided about.
-            if ( ! file_exists( $path ) ) {
+            if ( ! is_file( $resolved ) ) {
                 continue;
             }
 
-            if ( @unlink( $path ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_unlink
+            if ( @unlink( $resolved ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_unlink
                 $gone++;
             }
         }
@@ -3511,7 +3543,17 @@ class WP_Image_WebP_Converter_Queue {
      * @return array
      */
     private function decode_pending_purge( $value ) {
-        $payload = maybe_unserialize( $value );
+        // maybe_unserialize() would call unserialize() with no options, which
+        // instantiates whatever class the payload names. Meta is stored data that
+        // another plugin can shape, so this is an object-injection entry point:
+        // a crafted payload gets __wakeup() or __destruct() called on any class
+        // that happens to be loaded. Nothing here needs objects, so classes are
+        // refused outright rather than filtered by name.
+        if ( is_serialized( $value ) ) {
+            $payload = @unserialize( trim( (string) $value ), array( 'allowed_classes' => false ) ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize
+        } else {
+            $payload = $value;
+        }
 
         if ( ! is_array( $payload ) || empty( $payload['files'] ) || ! is_array( $payload['files'] ) ) {
             return array(

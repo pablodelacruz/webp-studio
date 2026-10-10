@@ -1429,6 +1429,39 @@ $left = (int) $wpdb->get_var(
 wps_check( 'no pending purge meta survives the fixtures', 0 === $left, $left . ' rows' );
 wps_check( 'every fixture file is gone from disk', 0 === count( (array) glob( $uploads_base . 'wps-*' ) ), $removed_files . ' files removed' );
 
+/* ------------------------------------------------------------------ */
+/* Delete containment: remove_files() must never escape the uploads dir */
+/* ------------------------------------------------------------------ */
+
+echo "\n== Delete containment ==\n";
+
+$outside = WP_CONTENT_DIR . '/wps-traversal-victim.txt';
+$victim  = file_put_contents( $outside, 'must survive' );
+
+$q_remove = new ReflectionMethod( 'WP_Image_WebP_Converter_Queue', 'remove_files' );
+$q_remove->setAccessible( true );
+
+// A name from post meta shaped as a traversal. It used to delete the file,
+// which made the purge an arbitrary file delete for anything able to write
+// metadata. It must be refused, silently and without throwing.
+$removed = $q_remove->invoke( new WP_Image_WebP_Converter_Queue(), array( '../wps-traversal-victim.txt' ) );
+
+wps_check( 'path traversal outside uploads is refused', 0 === (int) $removed, (int) $removed . ' removed' );
+wps_check( 'the file outside uploads still exists', file_exists( $outside ), 'gone' );
+
+@unlink( $outside );
+
+// An absolute-looking name must not be treated as one.
+$removed_abs = $q_remove->invoke( new WP_Image_WebP_Converter_Queue(), array( '/etc/hostname' ) );
+wps_check( 'an absolute path is not honoured', 0 === (int) $removed_abs, (int) $removed_abs . ' removed' );
+
+// A sibling directory whose name merely starts the same is not a child.
+$inside = trailingslashit( $uploads_base ) . 'wps-legit.webp';
+file_put_contents( $inside, 'ok' );
+$removed_ok = $q_remove->invoke( new WP_Image_WebP_Converter_Queue(), array( 'wps-legit.webp' ) );
+
+wps_check( 'a real upload is still deleted', 1 === (int) $removed_ok && ! file_exists( $inside ), (int) $removed_ok . ' removed' );
+
 echo "\n";
 printf(
     "RESULT: %d passed, %d failed\n",

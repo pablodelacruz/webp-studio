@@ -5,7 +5,7 @@ Tags: images, webp, performance, optimization, media
 Requires at least: 5.0
 Tested up to: 7.1
 Requires PHP: 7.0
-Stable tag: 2.1.1
+Stable tag: 2.1.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -119,6 +119,9 @@ Older versions could leave intermediate sizes behind after an interrupted conver
 3. Example of WebP-only files in the uploads directory
 
 == Changelog ==
+
+= 2.1.2 =
+* Corregido el borrado arbitrario de archivos fuera de uploads y la deserializacion de objetos en la cola.
 
 = 2.1.1 =
 * Corregida la entrada fantasma que inflaba el conteo de semillas fallidas.
