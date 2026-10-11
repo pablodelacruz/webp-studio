@@ -136,6 +136,12 @@ class WP_Image_WebP_Converter {
         // The admin screen lives in its own class and file.
         add_action( 'plugins_loaded', array( $this, 'boot_admin' ) );
 
+        // The WP-CLI commands live in their own class and file too. Registered the
+        // same way and for the same reason as boot_admin: a hook registered from
+        // a plugins_loaded callback is not guaranteed to run, and WP-CLI loads
+        // plugins the same way a web request does.
+        add_action( 'plugins_loaded', array( $this, 'boot_cli' ) );
+
         // Background processing.
         add_action( 'init', array( $this, 'maybe_reschedule_cron' ), 5 );
         add_action( self::CRON_HOOK, array( $this, 'process_cron_batch' ) );
@@ -218,6 +224,39 @@ class WP_Image_WebP_Converter {
         );
 
         return $admin;
+    }
+
+    /**
+     * Registers the WP-CLI commands, when running under WP-CLI.
+     *
+     * Loaded in this request and not in a web request: under WP-CLI, plugins are
+     * loaded the same way, and a command registered too late is simply absent from
+     * the dispatcher.
+     *
+     * The class is loaded and registered explicitly rather than left for WP-CLI to
+     * find by filename. WP-CLI discovers bundled commands from its own directories,
+     * not from a plugin's includes folder, so relying on a naming convention here
+     * would silently register nothing.
+     *
+     * The instance is registered rather than the class name. WP-CLI builds a
+     * command class itself with a no-argument constructor, so a class name would
+     * only work for a command that needs nothing injected; this one needs the
+     * converter that the admin screen already booted.
+     *
+     * @return WP_Image_WebP_Converter_CLI|null Null outside WP-CLI.
+     */
+    public function boot_cli() {
+        if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
+            return null;
+        }
+
+        require_once __DIR__ . '/includes/class-wp-image-webp-converter-cli.php';
+
+        $cli = new WP_Image_WebP_Converter_CLI( $this );
+
+        WP_CLI::add_command( 'webp-studio', $cli );
+
+        return $cli;
     }
 
     /**
@@ -519,10 +558,23 @@ class WP_Image_WebP_Converter {
      * This is the structural guarantee that a visitor page view or an admin page
      * load can never trigger batch conversion work.
      *
+     * WP-CLI is admitted for the same reason, and with the same reasoning, as in
+     * the queue: the guard is there to stop an incidental page view from starting
+     * heavy work, and a WP-CLI invocation is an explicit command from an operator
+     * who already has shell access to the host. It sits at the same trust level as
+     * the cron tick or an authenticated admin AJAX request, so refusing it would
+     * only deny the conversion engine to the person best placed to run it safely.
+     *
+     * WP_CLI is defined by the WP-CLI runtime alone, so a page view still has no
+     * path through this guard. This widens who may start a run on purpose; it does
+     * not weaken the guarantee for anybody who did not ask for it.
+     *
      * @return bool
      */
     private function batch_context_ok() {
-        return ( defined( 'DOING_CRON' ) && DOING_CRON ) || wp_doing_ajax();
+        return ( defined( 'DOING_CRON' ) && DOING_CRON )
+            || wp_doing_ajax()
+            || ( defined( 'WP_CLI' ) && WP_CLI );
     }
 
     /* ------------------------------------------------------------------ */
@@ -1315,8 +1367,13 @@ class WP_Image_WebP_Converter {
 
     /**
      * Starts a new background run.
+     *
+     * Public so the WP-CLI layer can start a run the way the admin screen does,
+     * through this one method rather than a second implementation of the same
+     * counter reset and cron arming. It schedules the work and returns; it never
+     * converts anything itself.
      */
-    private function start_run() {
+    public function start_run() {
         global $wpdb;
 
         $total = (int) $wpdb->get_var(
@@ -2195,9 +2252,17 @@ class WP_Image_WebP_Converter {
      * Scoped to images still referenced by a non-WebP attachment, plus thumbnails
      * whose attachment is gone or already converted.
      *
-     * @return int Files removed.
+     * Public so the WP-CLI layer can run the same scan the admin screen runs.
+     * $dry_run is honoured by this method itself and is not re-implemented by the
+     * caller: a CLI-side simulation would report files it never identified.
+     *
+     * @param bool $dry_run When true, report what would go without deleting.
+     * @return array {
+     *     @type int   $removed Number of files removed (or that would be removed).
+     *     @type array $files   Relative paths of a sample of those files, max 25.
+     * }
      */
-    private function cleanup_orphans( $dry_run = false ) {
+    public function cleanup_orphans( $dry_run = false ) {
         $uploads = wp_upload_dir();
         $base    = trailingslashit( $uploads['basedir'] );
 

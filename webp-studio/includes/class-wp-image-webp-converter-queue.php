@@ -440,10 +440,28 @@ class WP_Image_WebP_Converter_Queue {
      * visitor page view or an admin screen load into scan(), process() or the
      * cron re-arm beyond this check.
      *
+     * WP-CLI is admitted here on purpose. The guard exists so that an unrelated
+     * page view, triggered by whoever happens to be browsing the site, cannot
+     * start heavy work: the scan, the rewriter and the verified purge all write
+     * to the database and to disk, and none of them should ever fire because
+     * somebody loaded a page. A WP-CLI invocation is not that. It is an explicit,
+     * deliberate command from an operator who already holds shell access to the
+     * host, and it is at the same trust level as the cron tick or an authenticated
+     * admin AJAX request. Denying it would make the operations this plugin
+     * performs unavailable to the only person positioned to run them safely, and
+     * would push operators towards the WP-Cron emitter instead, which is slower
+     * and far less observable.
+     *
+     * This is a deliberate widening of the guard, not an oversight. What it does
+     * NOT do is weaken the guarantee it protects: a visitor page view still has no
+     * path in, because WP_CLI is only ever defined by the WP-CLI runtime itself.
+     *
      * @return bool
      */
     public function batch_context_ok() {
-        return ( defined( 'DOING_CRON' ) && DOING_CRON ) || wp_doing_ajax();
+        return ( defined( 'DOING_CRON' ) && DOING_CRON )
+            || wp_doing_ajax()
+            || ( defined( 'WP_CLI' ) && WP_CLI );
     }
 
     /**
