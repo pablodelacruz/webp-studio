@@ -4,7 +4,7 @@ Tags: images, webp, performance, optimization, media
 Requires at least: 5.0
 Tested up to: 7.1
 Requires PHP: 7.0
-Stable tag: 2.1.4
+Stable tag: 2.1.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -118,6 +118,9 @@ Older versions could leave intermediate sizes behind after an interrupted conver
 3. Example of WebP-only files in the uploads directory
 
 == Changelog ==
+
+= 2.1.5 =
+* WP-CLI: comandos para operar el plugin sin navegador (status, config, queue, run). Desinstalar ahora borra tambien la tabla del indice de referencias.
 
 = 2.1.4 =
 * CodeQL explicito para JS y workflows, y releases disparados por tag en vez de por push a main. El tag se verifica contra el header del plugin antes de publicar.
