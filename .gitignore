@@ -37,3 +37,20 @@ docker-compose.yml.backup
 # and add the line instead; seed-images/README.md explains how to regenerate them with
 # `seed-images/seed.sh --download`, and the download uses fixed Lorem Picsum IDs so the
 # result is reproducible.
+
+# Third-party security scanner, cloned locally from https://github.com/duriantaco/skylos.
+#
+# It was briefly tracked as a gitlink (mode 160000) with no .gitmodules, which pointed at
+# a commit that only existed inside the nested clone. Nothing in this repository invokes
+# it — no script, no CI job, no doc — so it is a developer tool, not a dependency of the
+# plugin. A submodule would wrongly claim this project depends on it, so it stays local.
+# Re-clone into this path if you need to re-run the audit: git clone <url> skylos
+/skylos/
+
+# PyPA's official pip bootstrap, vendored for a one-off audit run. No file in this
+# repository references it, and it embeds a base85 copy of all of pip (2.2 MB).
+get-pip.py
+
+# odd/ holds AI-orchestration task-tracking documents (feature objectives, checklists,
+# commit receipts). They are process artifacts, not part of the plugin or its build.
+odd/
