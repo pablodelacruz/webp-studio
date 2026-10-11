@@ -1,0 +1,124 @@
+name: Release
+
+# Cada push a main construye el plugin y lo publica como release.
+#
+# El gate de Skylos va primero a propósito: si falla, el job muere y no se publica
+# nada. Publicar un artefacto sin pasar el análisis sería peor que no publicar.
+on:
+  push:
+    branches: [main]
+
+# Lo mínimo posible a nivel de workflow: solo lectura. Publicar requiere escritura,
+# y esa se concede únicamente al job que publica (ver abajo), no a todo el workflow.
+permissions:
+  contents: read
+
+# Dos pushes seguidos no deben pelearse por el mismo tag. Se encolan en vez de
+# cancelarse: cancelar a mitad de publicación deja el release anterior a medias.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Scan, build, publish
+    runs-on: ubuntu-latest
+    # El job tiene permisos de escritura porque crea releases. Acotado a un solo job
+    # en vez de a todo el workflow.
+    permissions:
+      contents: write
+    # Un job de release sin límite puede colgarse y dejar el runner ocupado.
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          # Este workflow no hace push de git, así que las credenciales no necesitan
+          # quedar persistidas en el checkout.
+          persist-credentials: false
+
+      # Acciones pineadas a SHA completo, no a tags. Skylos marca como SKY-D292
+      # ("action reference is not pinned to a full commit SHA") cualquier referencia
+      # móvil, así que usar tags aquí haría que el gate señalara su propio workflow
+      # en cada push. Sube la versión editando el SHA en el comentario.
+      - name: Skylos
+        uses: duriantaco/skylos@abb2eab0172fc8ac7f7013e03e6e54d68f30d008 # v4.47.2
+        with:
+          mode: gate
+          # PHP: dead-code y security soportados; quality no lo está para PHP,
+          # así que no se pide.
+          analysis: dead-code security
+
+      - name: Build plugin zip
+        run: ./build-zip.sh
+
+      - name: Resolve version
+        id: meta
+        run: |
+          set -euo pipefail
+
+          version="$(grep -m1 -E '^[[:space:]]*\*[[:space:]]*Version:' webp-studio/webp-studio.php \
+            | sed 's/.*Version:[[:space:]]*//' | tr -d '[:space:]')"
+
+          if [ -z "$version" ]; then
+            echo "::error::No se pudo leer 'Version:' de webp-studio/webp-studio.php"
+            exit 1
+          fi
+
+          if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::La versión '$version' no es un semver de tres partes"
+            exit 1
+          fi
+
+          tag="v${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+          # Notas de release: se reutiliza la sección del changelog que ya mantiene
+          # release.sh en readme.txt. Si esa versión todavía no aparece ahí, se cae
+          # a las notas auto-generadas de GitHub en vez de publicar un release vacío.
+          notes="$(awk -v v="${version}" '
+            $0 ~ "^= " v " =" { grab=1; next }
+            grab && /^= [0-9]/ { exit }
+            grab && /^== / { exit }
+            grab && NF { print }
+          ' webp-studio/readme.txt)"
+
+          if [ -n "${notes}" ]; then
+            printf '%s\n' "${notes}" > release-notes.md
+            echo "notes=release-notes.md" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::readme.txt no tiene una sección para ${version}; se usarán notas generadas por GitHub"
+            echo "notes=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          NOTES: ${{ steps.meta.outputs.notes }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            # El tag ya existe (misma versión, push nuevo). Reemplazar el asset en vez
+            # de fallar es lo que hace esto idempotente: un push siempre deja el zip
+            # correcto, y nunca se pisa el historial de tags.
+            echo "El release ${TAG} ya existe; se reemplaza el asset."
+            gh release upload "${TAG}" webp-studio.zip --clobber
+            echo "::notice::Release ${TAG} actualizado con el zip de este commit."
+          else
+            echo "Publicando ${TAG}..."
+            if [ -n "${NOTES}" ]; then
+              gh release create "${TAG}" webp-studio.zip \
+                --title "${TAG}" --notes-file "${NOTES}"
+            else
+              gh release create "${TAG}" webp-studio.zip \
+                --title "${TAG}" --generate-notes
+            fi
+            echo "::notice::Release ${TAG} publicado."
+          fi
+
+          echo "zip: $(du -h webp-studio.zip | cut -f1)"
