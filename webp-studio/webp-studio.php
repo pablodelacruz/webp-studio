@@ -256,6 +256,14 @@ class WP_Image_WebP_Converter {
 
         WP_CLI::add_command( 'webp-studio', $cli );
 
+        // The grouped commands are separate classes registered under a parent name.
+        // WP-CLI only nests a subcommand when the class is registered under that
+        // parent: a single class exposes flat hyphenated names instead, turning
+        // queue_purge_log into 'queue-purge-log' rather than 'queue purge-log'.
+        WP_CLI::add_command( 'webp-studio config', new WP_Image_WebP_Converter_CLI_Config( $this ) );
+        WP_CLI::add_command( 'webp-studio queue', new WP_Image_WebP_Converter_CLI_Queue( $this ) );
+        WP_CLI::add_command( 'webp-studio run', new WP_Image_WebP_Converter_CLI_Run( $this ) );
+
         return $cli;
     }
 
