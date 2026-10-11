@@ -1,14 +1,23 @@
 name: CodeQL
 
-# Análisis estático del código real del plugin.
+# Análisis estático del JS del admin y de los propios workflows.
 #
-# El default setup de GitHub detectó javascript-typescript y actions pero no php,
-# que es el grueso de este plugin. Por eso este workflow es explícito: la matriz
-# declara los lenguajes que queremos, en vez de confiar en la autodetección.
+# NO incluye PHP, y no por descuido: CodeQL no soporta PHP. GitHub lo dice
+# explícitamente, "CodeQL does not support languages that are not listed above.
+# This includes, but is not limited to, PHP", y descarta en silencio los
+# lenguajes no soportados. Poner 'php' en la matriz de abajo no produce un
+# error: simplemente no aparece el job. Lo que se declare sin soporte es una
+# falsa sensación de cobertura.
 #
-# Duplica parte del trabajo de Skylos, y a propósito. Skylos cubre PHP con
-# dead-code y security; CodeQL aporta un modelo de datos distinto sobre el mismo
-# lenguaje. Dos analizadores que coincidan son evidencia; uno solo deja puntos ciegos.
+# Los lenguados que CodeQL soporta son C/C++, C#, Go, Java/Kotlin,
+# JavaScript/TypeScript, Python, Ruby, Rust, Swift y los workflows de Actions.
+#
+# El PHP de este plugin lo cubre Skylos, no CodeQL. Eso vuelve a Skylos
+# estructuralmente importante: es el único análisis estático sobre el grueso
+# del código. Ver .github/workflows/release.yml.
+#
+# Duplicar el análisis sobre el JS y los workflows es a propósito: son las
+# piezas que CodeQL sí soporta, y ahí no se solapa con lo que cubre Skylos.
 
 on:
   push:
@@ -37,7 +46,7 @@ jobs:
       # Que un lenguaje falle no debe cancelar el análisis de los otros.
       fail-fast: false
       matrix:
-        language: [ 'php', 'javascript-typescript', 'actions' ]
+        language: [ 'javascript-typescript', 'actions' ]
 
     steps:
       - name: Checkout
