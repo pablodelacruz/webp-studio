@@ -105,15 +105,21 @@ test.describe('settings screen', () => {
   test('the page loads with no uncaught JavaScript errors', async ({ page }) => {
     const collector = collectPageErrors(page);
 
-    await loginAsAdmin(page);
-
-    // Wait for the deferred admin script to actually poll, which is the observable
-    // proof it booted. networkidle cannot express that: the page is never idle on
-    // purpose, because the script polls every 3 seconds by design.
-    await page.waitForResponse(
+    // Register the listener BEFORE logging in. The admin script polls as soon as the
+    // settings screen loads, so a wait started afterwards is already too late and
+    // times out waiting for a request that happened before anybody was listening.
+    // waitForResponse only ever observes events that occur after it is called.
+    const firstStatusPoll = page.waitForResponse(
       (r) => r.url().includes('admin-ajax.php') && r.url().includes(AJAX_ACTIONS.getStatus),
       { timeout: 30_000 },
     );
+
+    await loginAsAdmin(page);
+
+    // The response is the observable proof the deferred script booted. networkidle
+    // cannot express that: the page is never idle on purpose, because the script
+    // polls every 3 seconds by design.
+    await firstStatusPoll;
     await expect(page.getByRole('tablist')).toBeVisible();
 
     // Visit every tab: each panel mounts markup and bindings on show.
