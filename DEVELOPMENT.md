@@ -106,10 +106,18 @@ Sale con código 1 si hay archivos más nuevos que el zip. Conviene correrlo ant
 
 ### El pipeline automático
 
-No hace falta compilar ni subir nada a mano. Cada `git push` a `main` publica un release:
+No hace falta compilar ni subir nada a mano. Publicás con un tag:
+
+```bash
+./release.sh --patch --notes "lo que cambia en esta versión"
+git push origin main
+git push origin vX.Y.Z
+```
+
+Y a partir del tag, el workflow hace:
 
 ```
-git push a main
+tag vX.Y.Z
   └─ 1. Skylos (gate)      ← si falla, el job muere y NO se publica nada
        └─ 2. build-zip.sh
             └─ 3. release publicado con el zip adjunto
@@ -117,17 +125,18 @@ git push a main
 
 Lo define `.github/workflows/release.yml`. Cuatro cosas que conviene saber:
 
+**Lo dispara un tag, no un push a `main`.** La protección de rama pide que los cambios
+lleguen por pull request. Con el release atado a `main` habría que elegir entre dejar la
+protección en modo consultivo o saltarse el gate. Con tag, publicar no toca `main`.
+
+**El tag manda, y se verifica.** Antes de construir, el workflow compara el tag contra
+el header `Version:` del plugin. Si no coinciden, el job falla en vez de publicar un
+release mal etiquetado. Por eso `release.sh` sigue siendo la única forma de cambiar la
+versión: si editás el header a mano, el tag va a quedar desfasado y el workflow te va a
+avisar con un error claro.
+
 **El análisis va antes que el empaquetado, a propósito.** Publicar un artefacto que no
 pasó el análisis sería peor que no publicar.
-
-**La versión se lee del header del plugin**, no de un tag ni de un contador:
-`Version:` en `webp-studio/webp-studio.php` determina el tag `vX.Y.Z`. Por eso
-`release.sh` sigue siendo la única fuente de verdad. Si subís la versión a mano en un
-solo archivo, `./release.sh --check` avisa y el release sale con notas autogeneradas
-en vez de tu changelog.
-
-**Es idempotente.** Si el tag ya existe, reemplaza el zip del release en vez de fallar.
-Un push sin bump de versión no rompe nada ni pisa el historial de tags.
 
 **Las notas salen de tu changelog** en `webp-studio/readme.txt`, y solo caen a notas
 autogeneradas si esa versión todavía no tiene sección.
@@ -261,11 +270,18 @@ Habilitado en el repositorio:
 
 Dos cosas que conviene saber, porque pueden dar una falsa sensación de cobertura:
 
-**CodeQL no está escaneando PHP.** El default setup de GitHub detectó
-`javascript-typescript` y `actions`, pero no `php`, que es el grueso del plugin. Los
-cero alertas en PHP **no** significan que esté limpio: significan que nunca se
-analizó. Para cerrar eso hay que migrar a un workflow de CodeQL propio con `php` en la
-matriz de lenguajes.
+**CodeQL no puede analizar PHP.** No es algo que se pueda configurar: GitHub lo dice
+explícitamente, "CodeQL does not support languages that are not listed above. This
+includes, but is not limited to, PHP", y descarta en silencio los lenguajes no
+soportados. Si ponés `php` en la matriz de un workflow propio, no da error: el job
+simplemente no aparece. Acá CodeQL sólo cubre `javascript-typescript` y `actions`.
+
+Por lo tanto los **cero alertas en PHP no significan que esté limpio: significan que
+nadie lo miró con un analizador**. No hay migracion que lo arregle.
+
+**Skylos es el único análisis estático sobre el PHP**, y su gate bloquea la
+publicación. Eso lo vuelve estructural: si Skylos deja de correr, el plugin queda sin
+análisis de seguridad en el pipeline.
 
 **Skylos sí cubre PHP**, con dead-code y security. `quality` no está soportado para
 PHP, así que no lo pide. Los falsos positivos que se detectaron a mano están

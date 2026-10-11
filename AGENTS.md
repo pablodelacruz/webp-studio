@@ -9,24 +9,29 @@ Plugin de WordPress que convierte imágenes subidas a WebP con un runner en segu
 plano. PHP puro, sin dependencias de Composer, sin build step. `webp-studio/` es el
 plugin distribuible; todo lo demás es andamiaje de desarrollo.
 
-## El pipeline: un push a `main` publica un release
+## El pipeline: un tag publica un release
 
 ```
-git push a main
-  └─ 1. Skylos (gate)      ← si falla, el job muere y NO se publica nada
+./release.sh --patch --notes "..."   # sube versión + changelog
+git push origin main                  # el código entra por PR
+git push origin vX.Y.Z               # el tag dispara el workflow
+  └─ 1. Skylos (gate)                 ← si falla, no se publica nada
        └─ 2. build-zip.sh
             └─ 3. release publicado con el zip adjunto
 ```
 
 Definido en `.github/workflows/release.yml`. Las piezas que importan:
 
+- **El release lo dispara un tag, no un push a `main`.** La protección de rama pide
+  que los cambios lleguen por pull request. Si el release dependiera de pushear a
+  `main`, habría que elegir entre dejar la protección en modo consultivo o saltarse
+  el gate. Con tag, publicar no toca `main`.
+- **El tag es la fuente de verdad, y se verifica.** El workflow compara el tag contra
+  el header `Version:` del plugin antes de construir. Si no coinciden, el job falla
+  en vez de publicar un release mal etiquetado. `release.sh` sigue siendo la única
+  forma de cambiar la versión.
 - **El gate va primero a propósito.** Publicar un artefacto que no pasó el análisis
   es peor que no publicar.
-- **La versión se lee del header del plugin**, no de un tag ni del número de run.
-  `webp-studio/webp-studio.php` → `Version: 2.1.3` → tag `v2.1.3`.
-  `release.sh` sigue siendo la única fuente de verdad.
-- **La publicación es idempotente.** Si el tag ya existe, reemplaza el asset con
-  `--clobber` en vez de fallar. Un push sin bump de versión no rompe nada.
 - **Las notas salen del changelog** de `webp-studio/readme.txt`, con fallback a notas
   autogeneradas si esa versión todavía no tiene sección.
 
@@ -94,9 +99,18 @@ git push origin vX.Y.Z      # dispara el workflow y publica el release
 ## Estado de seguridad del repositorio
 
 Habilitado: protección de `main`, private vulnerability reporting, secret scanning con
-push protection, Dependabot, y CodeQL.
+push protection, Dependabot, y CodeQL (default setup).
 
-Pendiente: **CodeQL no está analizando PHP.** El default setup de GitHub detectó
-`javascript-typescript` y `actions`, pero no `php`, que es el 90% del plugin. Los
-cero alertas en PHP no significan que esté limpio, significan que nunca se escaneó.
-Skylos sí cubre PHP (dead-code y security; `quality` no está soportado para PHP).
+**CodeQL no puede analizar PHP.** No es una configuración pendiente: GitHub lo dice
+explícitamente, "CodeQL does not support languages that are not listed above. This
+includes, but is not limited to, PHP", y descarta en silencio los lenguajes no
+soportados. Poner `php` en una matriz no da error, simplemente no aparece el job. Lo
+único que CodeQL cubre aquí es `javascript-typescript` y `actions`.
+
+Por eso **Skylos es estructuralmente importante**: es el único análisis estático sobre
+el PHP del plugin, y su gate bloquea la publicación. Si Skylos dejara de correr, el
+plugin queda sin análisis de seguridad en el pipeline.
+
+No agregues un workflow propio de CodeQL sin desactivar antes el default setup:
+GitHub rechaza la combinación con "CodeQL analyses from advanced configurations
+cannot be processed when the default setup is enabled".
