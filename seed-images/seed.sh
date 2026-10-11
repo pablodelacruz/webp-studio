@@ -108,6 +108,15 @@ import_images() {
   if [ "$WITH_USER" -eq 1 ]; then
     mapfile -t extra < <(find "$SCRIPT_DIR/user-uploads" -maxdepth 1 \
       \( -name '*.jpg' -o -name '*.png' -o -name '*.gif' \) 2>/dev/null | sort)
+
+    # Sin este aviso, un clone nuevo (donde user-uploads/ no existe porque los binarios
+    # no se trackean) importaba solo el set base y parecia haber funcionado: el fallo se
+    # confundia con un seed correcto.
+    if [ "${#extra[@]}" -eq 0 ]; then
+      echo "Aviso: se pidió --with-user pero ${SCRIPT_DIR}/user-uploads/ no contiene imágenes." >&2
+      echo "      Los binarios de user-uploads/ no se trackean en git (ver .gitignore), así" >&2
+      echo "      que un clone nuevo llega sin ellos. Copia tus fixtures a esa ruta y repite." >&2
+    fi
   fi
 
   # The printf has to be conditional. Unconditional, it emits a bare newline whenever

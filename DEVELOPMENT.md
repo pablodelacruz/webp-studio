@@ -46,13 +46,17 @@ borra entero.
 
 ### Volumen destruido, ¿y las imágenes?
 
-Las 12 semilla se regeneran solas. Si habías subido algo tuyo y querés recuperarlo:
+Las 12 semilla se regeneran solas. Si además querés importar el set extra de
+`seed-images/user-uploads/`:
 
 ```bash
 ./seed-images/seed.sh --with-user
 ```
 
-Trae de vuelta las 38 capturas de `seed-images/user-uploads/`.
+Importa las 38 imágenes de `seed-images/user-uploads/`. Ojo con esto: **ese directorio no
+se trackea en git**, así que un clone nuevo llega sin él y el comando no encuentra nada que
+importar. Ahora te avisa en vez de fingir que funcionó, pero el set sigue siendo tuyo: copiá
+tus fixtures a `seed-images/user-uploads/` antes de correrlo.
 
 ---
 
@@ -198,7 +202,7 @@ Imagick tengan soporte WebP.
 | `docker-compose.yml`, `Dockerfile`, `.env`, `wp-config.php` | Entorno de desarrollo |
 | `reset-rebuild.sh`, `build-zip.sh`, `seed-images/` | Reproducibilidad |
 | `analysis/` | Conectores de solo lectura a bases de datos reales |
-| `seed-images/user-uploads/` | Capturas tuyas, 15 MB de binarios |
+| `seed-images/user-uploads/` | Fixtures operator-locales, 15 MB, no trackeados en git |
 
 Nada de esto está en `webp-studio.zip`. El zip contiene solo el plugin.
 
