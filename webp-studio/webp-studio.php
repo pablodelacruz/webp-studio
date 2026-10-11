@@ -3,7 +3,7 @@
  * Plugin Name:       WebP Studio
  * Plugin URI:        https://example.com/webp-studio
  * Description:       Convierte automáticamente JPEG, PNG y GIF a WebP y elimina el original, haciendo que WordPress sirva únicamente WebP. La conversión de imágenes existentes se ejecuta en segundo plano mediante WP-Cron.
- * Version:           2.1.3
+ * Version:           2.1.4
  * Requires at least: 5.0
  * Requires PHP:      7.0
  * Author:            Assistant

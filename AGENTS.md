@@ -64,7 +64,10 @@ escrito. Si los quitas, aparecen 3 hallazgos que ya se revisaron a mano.
 ./build-zip.sh              # empaqueta (verifica sintaxis PHP antes)
 ./build-zip.sh --check      # solo informa si el zip quedó viejo
 ./release.sh --check        # verifica que plugin y readme digan la misma versión
-./release.sh --bump patch   # sube versión + changelog en ambos archivos
+./release.sh --patch        # sube 2.1.0 -> 2.1.1 y escribe el changelog
+./release.sh --minor        # sube 2.1.0 -> 2.2.0
+./release.sh --notes "..."  # una línea de changelog para esta versión
+git push origin vX.Y.Z      # dispara el workflow y publica el release
 ./reset-rebuild.sh          # reconstruye el stack Docker desde cero
 ./seed-images/seed.sh --download
 ```
