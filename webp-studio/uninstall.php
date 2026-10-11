@@ -66,8 +66,14 @@ global $wpdb;
 // The queue and its history are plugin bookkeeping and hold no user content, so
 // they are removed with the plugin. Destructive only if reinstalled afterwards:
 // the stored "previous value" that makes a rewrite reversible goes with them.
+//
+// webp_refs is the reference index and is dropped here too. install_tables()
+// creates three tables, and dropping only two left the index orphaned in the
+// database of anyone who ever uninstalled the plugin. queue->drop_tables()
+// already removed all three; this file simply had not kept up.
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}webp_log" );
 $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}webp_queue" );
+$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}webp_refs" );
 
 // Drop the per-attachment marker. This is plugin bookkeeping only; the image files
 // and all other attachment metadata are left alone.

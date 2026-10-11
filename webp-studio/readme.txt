@@ -1,6 +1,5 @@
 === WebP Studio ===
-Contributors: assistant
-Donate link: https://example.com
+Contributors: pablodelacruz
 Tags: images, webp, performance, optimization, media
 Requires at least: 5.0
 Tested up to: 7.1

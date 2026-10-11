@@ -1415,14 +1415,21 @@ $wpdb->query( // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 $left = (int) $wpdb->get_var(
     $wpdb->prepare(
+        // $window_fixture is deliberately NOT in this list. It is the fixture that
+        // must survive: the assertions above prove the plugin refuses to purge it
+        // while the reference index is incomplete, so it is expected to still carry
+        // META_PENDING_PURGE here. It used to be passed as a seventh argument and
+        // relied on wpdb::prepare silently dropping the extra one to achieve exactly
+        // that. It also emitted a wpdb notice on every run, which is the kind of
+        // noise that trains people to ignore the ones that matter. Exclude it by
+        // name instead.
         "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key IN (%s, %s) AND post_id IN (%d, %d, %d, %d)",
         WP_Image_WebP_Converter_Queue::META_PENDING_PURGE,
         WP_Image_WebP_Converter_Queue::META_PURGE_STATE,
         (int) $referenced['id'],
         (int) $solo['id'],
         (int) $blind['id'],
-        (int) $careful['id'],
-        (int) $window_fixture['id']
+        (int) $careful['id']
     )
 );
 
