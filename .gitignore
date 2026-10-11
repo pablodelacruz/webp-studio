@@ -29,14 +29,24 @@ docker-compose.yml.backup
 
 # Seed images.
 #
-# These are deliberately NOT ignored. They are fixtures the development environment
-# depends on: reset-rebuild.sh destroys the WordPress volume and re-imports them, so a
-# fresh clone can boot with a real media library instead of an empty one.
+# The image binaries are ignored; seed.sh and README.md stay tracked because they are the
+# regeneration path. The fixtures themselves weigh ~17 MB and would dominate the history
+# for no benefit: they are development fixtures, not plugin assets or release artifacts.
 #
-# If you would rather not carry ~1.8 MB of binaries in the history, delete this comment
-# and add the line instead; seed-images/README.md explains how to regenerate them with
-# `seed-images/seed.sh --download`, and the download uses fixed Lorem Picsum IDs so the
-# result is reproducible.
+# The dev environment still depends on them at runtime (reset-rebuild.sh destroys the
+# WordPress volume and re-imports them, so a fresh clone boots with a real media
+# library). Regenerate them after cloning with:
+#
+#     seed-images/seed.sh --download
+#
+# The download uses fixed Lorem Picsum IDs, so the result is byte-for-byte reproducible.
+# See seed-images/README.md.
+seed-images/**/*.jpg
+seed-images/**/*.jpeg
+seed-images/**/*.png
+seed-images/**/*.gif
+seed-images/**/*.webp
+seed-images/**/*.avif
 
 # Third-party security scanner, cloned locally from https://github.com/duriantaco/skylos.
 #
