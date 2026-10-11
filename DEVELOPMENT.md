@@ -104,6 +104,36 @@ Para comprobar si el zip quedó viejo:
 
 Sale con código 1 si hay archivos más nuevos que el zip. Conviene correrlo antes de desplegar.
 
+### El pipeline automático
+
+No hace falta compilar ni subir nada a mano. Cada `git push` a `main` publica un release:
+
+```
+git push a main
+  └─ 1. Skylos (gate)      ← si falla, el job muere y NO se publica nada
+       └─ 2. build-zip.sh
+            └─ 3. release publicado con el zip adjunto
+```
+
+Lo define `.github/workflows/release.yml`. Cuatro cosas que conviene saber:
+
+**El análisis va antes que el empaquetado, a propósito.** Publicar un artefacto que no
+pasó el análisis sería peor que no publicar.
+
+**La versión se lee del header del plugin**, no de un tag ni de un contador:
+`Version:` en `webp-studio/webp-studio.php` determina el tag `vX.Y.Z`. Por eso
+`release.sh` sigue siendo la única fuente de verdad. Si subís la versión a mano en un
+solo archivo, `./release.sh --check` avisa y el release sale con notas autogeneradas
+en vez de tu changelog.
+
+**Es idempotente.** Si el tag ya existe, reemplaza el zip del release en vez de fallar.
+Un push sin bump de versión no rompe nada ni pisa el historial de tags.
+
+**Las notas salen de tu changelog** en `webp-studio/readme.txt`, y solo caen a notas
+autogeneradas si esa versión todavía no tiene sección.
+
+Podés ver el resultado en la pestaña Actions del repo.
+
 ---
 
 ## 4. Instalar en un servidor nuevo
@@ -216,3 +246,33 @@ Nada de esto está en `webp-studio.zip`. El zip contiene solo el plugin.
 - Las imágenes semilla vienen de [Lorem Picsum](https://picsum.photos) (fotos de Unsplash,
   licencia que permite uso libre pero no redistribución comercial). Si vas a publicar,
   reemplazalas por material propio.
+
+### Estado en GitHub
+
+Habilitado en el repositorio:
+
+| Función | Qué hace |
+|---|---|
+| Protección de `main` | Exige 1 revisión en PRs. Los admins pueden pushear directo (`enforce_admins` desactivado). |
+| Secret scanning + push protection | Bloquea el push si detecta credenciales. |
+| Dependabot | Alertas y actualizaciones de seguridad. |
+| CodeQL | Análisis estático. |
+| Private vulnerability reporting | Reportes privados en `/security/advisories/new`. |
+
+Dos cosas que conviene saber, porque pueden dar una falsa sensación de cobertura:
+
+**CodeQL no está escaneando PHP.** El default setup de GitHub detectó
+`javascript-typescript` y `actions`, pero no `php`, que es el grueso del plugin. Los
+cero alertas en PHP **no** significan que esté limpio: significan que nunca se
+analizó. Para cerrar eso hay que migrar a un workflow de CodeQL propio con `php` en la
+matriz de lenguajes.
+
+**Skylos sí cubre PHP**, con dead-code y security. `quality` no está soportado para
+PHP, así que no lo pide. Los falsos positivos que se detectaron a mano están
+suprimidos en `pyproject.toml`, con el motivo escrito al lado de cada uno. Ojo:
+suprimir `SKY-D215` desactiva en todo el repo la detección de borrado arbitrario de
+archivos, que es la clase de bug que este plugin ya tuvo una vez.
+
+### Para reportar una vulnerabilidad
+
+https://github.com/pablodelacruz/webp-studio/security/advisories/new
