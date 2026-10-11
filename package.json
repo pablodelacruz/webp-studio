@@ -1,0 +1,19 @@
+{
+  "name": "wpimgplugin-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "description": "End-to-end and security tests for the WebP Studio WordPress plugin admin UI. Development tooling only: build-zip.sh packages webp-studio/ exclusively, so nothing here ships with the plugin.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:report": "playwright show-report",
+    "test:install": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.1",
+    "@playwright/test": "^1.49.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

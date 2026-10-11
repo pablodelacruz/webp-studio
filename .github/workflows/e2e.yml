@@ -1,0 +1,156 @@
+name: e2e
+
+# Functional and security coverage for the WebP Studio admin UI. The plugin's PHP
+# logic is already covered by tests/verify-runtime.php inside the Docker stack; this
+# workflow boots a throwaway WordPress from scratch and drives the admin screen with a
+# real browser, which is the only way to prove the capability and nonce gates hold.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# Every action is pinned to a full commit SHA. Skylos reports floating references as
+# SKY-D292 and the release gate would flag this workflow on every push.
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: Playwright (admin UI + security)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: wordpress
+          MYSQL_USER: wordpress
+          # Falls back to a throwaway value so a fork's pull request still runs: this
+          # database lives for the duration of the job only.
+          MYSQL_PASSWORD: ${{ secrets.E2E_DB_PASSWORD || 'e2e-runner-local-password' }}
+          MYSQL_ROOT_PASSWORD: ${{ secrets.E2E_DB_ROOT_PASSWORD || 'e2e-runner-local-root' }}
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      WP_ROOT: /tmp/wp
+      WP_URL: http://localhost:8080
+      DB_NAME: wordpress
+      DB_USER: wordpress
+      DB_PASSWORD: ${{ secrets.E2E_DB_PASSWORD || 'e2e-runner-local-password' }}
+      DB_HOST: 127.0.0.1:3306
+      E2E_BASE_URL: http://localhost:8080
+      # Throwaway accounts for the runner. Generated per run, never committed, and only
+      # ever used against the database this job creates.
+      E2E_ADMIN_USER: webp-e2e-admin
+      E2E_ADMIN_PASS: ${{ secrets.E2E_ADMIN_PASS || 'webp-e2e-admin-pass' }}
+      E2E_SUBSCRIBER_USER: webp-e2e-subscriber
+      E2E_SUBSCRIBER_PASS: ${{ secrets.E2E_SUBSCRIBER_PASS || 'webp-e2e-subscriber-pass' }}
+      E2E_EDITOR_USER: webp-e2e-editor
+      E2E_EDITOR_PASS: ${{ secrets.E2E_EDITOR_PASS || 'webp-e2e-editor-pass' }}
+      # The suite talks to wp-cli directly here; no Docker socket on the runner.
+      E2E_WP_CLI_DIRECT: '1'
+      E2E_WP_DOCROOT: /tmp/wp
+      E2E_WP_CLI_CONTAINER: 'not-used-in-ci'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.35.5
+        with:
+          php-version: '8.3'
+          extensions: mysqli, gd
+          tools: none
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.1.0
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install wp-cli
+        run: |
+          curl -fsSL -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+          chmod +x /usr/local/bin/wp
+          wp --info
+
+      - name: Download WordPress
+        run: |
+          mkdir -p "$WP_ROOT"
+          wp core download --path="$WP_ROOT" --version=latest --force
+          wp config create --path="$WP_ROOT" --dbname="$DB_NAME" --dbuser="$DB_USER" \
+            --dbpass="$DB_PASSWORD" --dbhost="$DB_HOST" --skip-check --force
+          wp config set WP_DEBUG true --raw --path="$WP_ROOT"
+          wp config set WP_DEBUG_LOG true --raw --path="$WP_ROOT"
+          wp config set WP_DEBUG_DISPLAY false --raw --path="$WP_ROOT"
+
+      - name: Install WordPress
+        run: |
+          for i in $(seq 1 30); do
+            if wp db check --path="$WP_ROOT" >/dev/null 2>&1; then break; fi
+            echo "waiting for mysql ($i)"; sleep 2
+          done
+          wp db check --path="$WP_ROOT"
+          wp core install --path="$WP_ROOT" --url="$WP_URL" --title="WebP E2E" \
+            --admin_user="$E2E_ADMIN_USER" --admin_password="$E2E_ADMIN_PASS" \
+            --admin_email=e2e@example.invalid --skip-email
+
+      - name: Activate the plugin
+        run: |
+          # The plugin needs its sample image and the uploads dir to exist before the
+          # preview endpoint can answer.
+          mkdir -p "$WP_ROOT/wp-content/uploads"
+          ln -s "$GITHUB_WORKSPACE/webp-studio" "$WP_ROOT/wp-content/plugins/webp-studio"
+          wp plugin activate webp-studio --path="$WP_ROOT"
+          wp plugin list --path="$WP_ROOT"
+
+      - name: Start PHP built-in server
+        run: |
+          # PHP_CLI_SERVER_WORKERS is required: the built-in server is single-threaded by
+          # default, and the admin screen fetches admin-ajax.php while the page is still
+          # being served, which would deadlock without workers.
+          PHP_CLI_SERVER_WORKERS=8 php -S 0.0.0.0:8080 -t "$WP_ROOT" \
+            > /tmp/php-server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null "$WP_URL/wp-login.php"; then echo "server up"; exit 0; fi
+            sleep 1
+          done
+          echo "server did not come up"; cat /tmp/php-server.log; exit 1
+
+      - name: Install npm dependencies
+        run: npm ci || npm install
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Stop PHP server
+        if: ${{ always() }}
+        run: pkill -f "php -S 0.0.0.0:8080" || true
