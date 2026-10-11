@@ -108,9 +108,14 @@ test.describe('settings screen', () => {
     // Register the listener BEFORE logging in. The admin script polls as soon as the
     // settings screen loads, so a wait started afterwards is already too late and
     // times out waiting for a request that happened before anybody was listening.
-    // waitForResponse only ever observes events that occur after it is called.
+    //
+    // Match on the request body, not the URL. The admin script posts to
+    // admin-ajax.php with the action inside the form payload, so the URL is the same
+    // for all fourteen endpoints and contains nothing to distinguish them.
     const firstStatusPoll = page.waitForResponse(
-      (r) => r.url().includes('admin-ajax.php') && r.url().includes(AJAX_ACTIONS.getStatus),
+      (r) =>
+        r.url().includes('admin-ajax.php') &&
+        (r.request().postData() ?? '').includes(AJAX_ACTIONS.getStatus),
       { timeout: 30_000 },
     );
 
