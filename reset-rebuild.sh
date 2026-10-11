@@ -308,15 +308,26 @@ docker exec wpimgplugin-wordpress-1 wp redis status \
 # This script runs `docker compose down -v`, which destroys the WordPress volume and
 # therefore every uploaded file. Without this step the site always comes back with an
 # empty media library, which makes it impossible to verify the plugin against real
-# content. The seed images live in the repo (seed-images/) and are ordinary WordPress
-# attachments once imported. See seed-images/README.md for provenance and licensing.
+# content.
+#
+# The image binaries are not tracked in git (see .gitignore): they weigh ~17 MB and would
+# dominate the history for no benefit, since they are development fixtures rather than
+# plugin assets or release artifacts. seed.sh therefore fetches them on demand from Lorem
+# Picsum using fixed image IDs, so a fresh clone receives the same set of photos. Once
+# imported they are ordinary WordPress attachments. See seed-images/README.md for
+# provenance and licensing.
+#
+# --download is mandatory here, not optional: with the binaries untracked there is
+# nothing local left to import, and seed.sh aborts when it finds no images. It also
+# regenerates the PNG and GIF through GD inside the running container, which is why this
+# block has to stay after `docker compose up`.
 # -----------------------------------------------------------------
 echo "Importing seed images..."
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 if [ -x "${SCRIPT_DIR}/seed-images/seed.sh" ]; then
   WP_CONTAINER=wpimgplugin-wordpress-1 \
   WP_HOME="${WP_HOME}" \
-    "${SCRIPT_DIR}/seed-images/seed.sh" || echo "Seed import reported problems; continuing."
+    "${SCRIPT_DIR}/seed-images/seed.sh" --download || echo "Seed import reported problems; continuing."
 else
   echo "  seed-images/seed.sh not found or not executable; skipping."
 fi
