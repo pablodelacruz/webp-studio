@@ -16,6 +16,26 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 wp_set_current_user( 1 );
 
+// The suite exercises capability-gated paths, so user 1 has to hold manage_options.
+// Without this check a demoted account produced a bare WordPress "you do not have
+// sufficient permissions" screen and nothing else, which reads like a plugin bug and
+// sent debugging down the wrong path entirely.
+if ( ! current_user_can( 'manage_options' ) ) {
+    $wps_user = get_userdata( 1 );
+    fwrite(
+        STDERR,
+        sprintf(
+            "User 1 (%s) needs the administrator role; it currently has [%s].\n"
+            . "Restore it with: wp user set-role %s administrator\n"
+            . "This suite drives capability-gated code and cannot run otherwise.\n",
+            $wps_user ? $wps_user->user_login : '?',
+            $wps_user ? implode( ', ', (array) $wps_user->roles ) : '?',
+            $wps_user ? $wps_user->user_login : '1'
+        )
+    );
+    exit( 1 );
+}
+
 global $wpdb;
 
 // Counters live in $GLOBALS on purpose: wp eval-file evaluates this file inside a

@@ -4,7 +4,7 @@ Tags: images, webp, performance, optimization, media
 Requires at least: 5.0
 Tested up to: 7.1
 Requires PHP: 7.0
-Stable tag: 2.1.5
+Stable tag: 2.1.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -118,6 +118,9 @@ Older versions could leave intermediate sizes behind after an interrupted conver
 3. Example of WebP-only files in the uploads directory
 
 == Changelog ==
+
+= 2.1.6 =
+* Suite de Playwright sobre la UI del admin y sus propiedades de seguridad; el release ahora se publica solo si esa suite pasa. Sin esperas por reloj: cada prueba espera una condicion observable.
 
 = 2.1.5 =
 * WP-CLI: comandos para operar el plugin sin navegador (status, config, queue, run). Desinstalar ahora borra tambien la tabla del indice de referencias.
