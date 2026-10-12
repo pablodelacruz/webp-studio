@@ -12,6 +12,14 @@ name: Release
 #
 # El tag es la fuente de verdad del release, y se verifica contra el header del
 # plugin. Si no coinciden, el job falla en vez de publicar un release mal etiquetado.
+#
+# Dos gates, en orden, y el segundo no arranca si el primero falla:
+#
+#   e2e      Playwright sobre la UI del admin y sus propiedades de seguridad
+#   publish  Skylos (dead-code + seguridad), empaquetado y publicación
+#
+# El gate de e2e corre contra el commit etiquetado, no contra main: lo que se prueba
+# es exactamente lo que se va a publicar.
 
 on:
   push:
@@ -27,8 +35,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # End-to-end gate. Runs first and gates the rest: if the admin UI or any of its
+  # security properties are broken, nothing gets published. It runs against the tagged
+  # commit rather than main, so what is tested is exactly what is about to ship.
+  e2e:
+    name: End-to-end (admin UI and security)
+    uses: ./.github/workflows/e2e.yml
+
   publish:
     name: Scan, build, publish
+    needs: e2e
     runs-on: ubuntu-latest
     permissions:
       contents: write

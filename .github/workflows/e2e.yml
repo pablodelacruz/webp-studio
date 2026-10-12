@@ -10,6 +10,10 @@ on:
   push:
     branches:
       - main
+  # Reusable so the release workflow can gate on it. That call runs the suite against
+  # the tagged commit, which is the only checkout that actually matters: it is the code
+  # about to be published, not whatever happens to be on main.
+  workflow_call:
 
 # Every action is pinned to a full commit SHA. Skylos reports floating references as
 # SKY-D292 and the release gate would flag this workflow on every push.
@@ -26,9 +30,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # A dedicated environment so the secrets below are scoped to this job instead of
+    # being readable anywhere in the repository (SKY-D299).
+    environment: e2e
+
     services:
       mysql:
-        image: mysql:8.0
+        # Pinned by digest, not by tag: a tag is mutable, so the build would silently
+        # change underneath a green run (SKY-D296).
+        image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
         env:
           MYSQL_DATABASE: wordpress
           MYSQL_USER: wordpress
@@ -44,22 +54,18 @@ jobs:
           --health-timeout=5s
           --health-retries=10
 
+    # Only non-secret wiring lives here. Anything sensitive is attached to the single
+    # step that needs it, so it is not handed to every step in the job (SKY-D309).
     env:
       WP_ROOT: /tmp/wp
       WP_URL: http://localhost:8080
       DB_NAME: wordpress
       DB_USER: wordpress
-      DB_PASSWORD: ${{ secrets.E2E_DB_PASSWORD || 'e2e-runner-local-password' }}
       DB_HOST: 127.0.0.1:3306
       E2E_BASE_URL: http://localhost:8080
-      # Throwaway accounts for the runner. Generated per run, never committed, and only
-      # ever used against the database this job creates.
       E2E_ADMIN_USER: webp-e2e-admin
-      E2E_ADMIN_PASS: ${{ secrets.E2E_ADMIN_PASS || 'webp-e2e-admin-pass' }}
       E2E_SUBSCRIBER_USER: webp-e2e-subscriber
-      E2E_SUBSCRIBER_PASS: ${{ secrets.E2E_SUBSCRIBER_PASS || 'webp-e2e-subscriber-pass' }}
       E2E_EDITOR_USER: webp-e2e-editor
-      E2E_EDITOR_PASS: ${{ secrets.E2E_EDITOR_PASS || 'webp-e2e-editor-pass' }}
       # The suite talks to wp-cli directly here; no Docker socket on the runner.
       E2E_WP_CLI_DIRECT: '1'
       E2E_WP_DOCROOT: /tmp/wp
@@ -68,6 +74,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Set up PHP
         uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2.35.5
@@ -89,6 +97,8 @@ jobs:
           wp --info
 
       - name: Download WordPress
+        env:
+          DB_PASSWORD: ${{ secrets.E2E_DB_PASSWORD || 'e2e-runner-local-password' }}
         run: |
           mkdir -p "$WP_ROOT"
           wp core download --path="$WP_ROOT" --version=latest --force
@@ -99,6 +109,8 @@ jobs:
           wp config set WP_DEBUG_DISPLAY false --raw --path="$WP_ROOT"
 
       - name: Install WordPress
+        env:
+          E2E_ADMIN_PASS: ${{ secrets.E2E_ADMIN_PASS || 'webp-e2e-admin-pass' }}
         run: |
           for i in $(seq 1 30); do
             if wp db check --path="$WP_ROOT" >/dev/null 2>&1; then break; fi
@@ -132,12 +144,21 @@ jobs:
           echo "server did not come up"; cat /tmp/php-server.log; exit 1
 
       - name: Install npm dependencies
-        run: npm ci || npm install
+        # --ignore-scripts: dependency lifecycle scripts are arbitrary code from every
+        # transitive package (SKY-D312). Nothing here needs one; browsers come from the
+        # explicit playwright install in the next step.
+        run: npm ci --ignore-scripts || npm install --ignore-scripts
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
+        env:
+          # Throwaway accounts, created by the global setup against the database this
+          # job builds. Scoped here so they are not handed to the earlier steps.
+          E2E_ADMIN_PASS: ${{ secrets.E2E_ADMIN_PASS || 'webp-e2e-admin-pass' }}
+          E2E_SUBSCRIBER_PASS: ${{ secrets.E2E_SUBSCRIBER_PASS || 'webp-e2e-subscriber-pass' }}
+          E2E_EDITOR_PASS: ${{ secrets.E2E_EDITOR_PASS || 'webp-e2e-editor-pass' }}
         run: npx playwright test
 
       - name: Upload Playwright report
@@ -149,7 +170,9 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 14
-          if-no-files-found: warn
+          # A report that silently failed to upload would hide exactly the evidence
+          # needed to diagnose a red run (SKY-D311).
+          if-no-files-found: error
 
       - name: Stop PHP server
         if: ${{ always() }}
